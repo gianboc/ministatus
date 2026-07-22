@@ -1,0 +1,15 @@
+{
+  "host": "mini01",
+  "t": 1784749553,
+  "boot": 1784186892,
+  "uptime_s": 562661,
+  "load": [11.68, 11.43, 11.47],
+  "cores": 48,
+  "mem_used": 83576336384,
+  "mem_total": 270140428288,
+  "disk_root_pct": 20,
+  "disk_home_pct": 69,
+  "sessions": 4,
+  "slurm_running": 1,
+  "slurm_pending": 0
+}
