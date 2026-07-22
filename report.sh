@@ -32,11 +32,6 @@ SESSIONS=$(who | wc -l)
 # counts only; -1 would mean "no scheduler answer" but wc gives 0 either way — acceptable v0
 SLURM_R=$( (timeout 5 squeue -h -t R 2>/dev/null || true) | wc -l )
 SLURM_PD=$( (timeout 5 squeue -h -t PD 2>/dev/null || true) | wc -l )
-# structured queue info for the scheduler tile + wait estimator (anonymous: no users/names)
-# st=first letter of state, c=cpus, mem=requested memory, el=elapsed, lim=time limit
-SLURM_AIOT=$( (timeout 5 sinfo -h -o '%C' 2>/dev/null || true) | head -1 )
-SLURM_JOBS=$( (timeout 5 squeue -h -o '%T|%C|%m|%M|%l' 2>/dev/null || true) | \
-  awk -F'|' '{printf "%s{\"st\":\"%s\",\"c\":%s,\"mem\":\"%s\",\"el\":\"%s\",\"lim\":\"%s\"}", (NR>1?",":""), substr($1,1,1), $2, $3, $4, $5}' )
 
 # peer reachability (TCP :22) — lets the page tell "machine down" apart from
 # "machine fine but its own reporting broke" (cron dead, GitHub unreachable)
@@ -64,8 +59,6 @@ cat > "status/$HOST.json" <<EOF
   "sessions": $SESSIONS,
   "slurm_running": $SLURM_R,
   "slurm_pending": $SLURM_PD,
-  "slurm_cores": "$SLURM_AIOT",
-  "slurm_jobs": [$SLURM_JOBS],
   "peers": {$PEERS_JSON}
 }
 EOF

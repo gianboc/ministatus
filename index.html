@@ -81,6 +81,20 @@
   .ghost h2 { color: var(--muted); }
   section.events { margin-top: 28px; }
   section.events h2 { font-size: 15px; font-weight: 650; margin: 0 0 8px; }
+  section.planner { margin-top: 28px; background: var(--surface); border: 1px solid var(--hairline);
+                    border-radius: 10px; padding: 14px 18px; }
+  section.planner h2 { font-size: 15px; font-weight: 650; margin: 0 0 10px; }
+  .prow { display: flex; gap: 14px; align-items: end; flex-wrap: wrap; }
+  .prow label { font-size: 12.5px; color: var(--muted); display: grid; gap: 3px; }
+  .prow input { width: 76px; padding: 5px 8px; font: inherit; color: var(--ink);
+                background: var(--plane); border: 1px solid var(--hairline); border-radius: 6px; }
+  .prow button { padding: 6px 16px; font: inherit; font-weight: 650; color: var(--ink);
+                 background: var(--plane); border: 1px solid var(--hairline); border-radius: 6px;
+                 cursor: pointer; }
+  .prow button:hover { border-color: var(--muted); }
+  #pout { margin-top: 10px; display: grid; gap: 4px; font-size: 13.5px; }
+  #pout .rec { font-weight: 650; }
+  #pout .dot { display: inline-block; margin-right: 6px; }
   section.fine { margin-top: 30px; border-top: 1px solid var(--hairline); padding-top: 14px; }
   section.fine h2 { font-size: 14px; font-weight: 650; margin: 0 0 8px; }
   section.fine ul { margin: 0; padding-left: 18px; font-size: 13px; color: var(--ink-2); }
@@ -101,6 +115,18 @@
     <span class="sub" id="updated">loading…</span>
   </header>
   <div class="grid" id="grid"></div>
+  <section class="planner">
+    <h2>Where should I run my job?</h2>
+    <div class="prow">
+      <label>cores <input id="pc" type="number" min="1" max="48" value="8"></label>
+      <label>RAM (GB) <input id="pg" type="number" min="1" max="252" value="50"></label>
+      <label>hours <input id="ph" type="number" min="1" max="720" value="12"></label>
+      <button id="pbtn">tell me</button>
+    </div>
+    <div id="pout"></div>
+    <p class="sub">Worst-case estimates: they assume every job runs to its full time limit —
+      real waits are usually shorter, never longer.</p>
+  </section>
   <section class="events">
     <h2>Recent events</h2>
     <div id="events"><span class="sub">loading…</span></div>
@@ -130,6 +156,7 @@
 </div>
 <script>
 const NODES = ["mini01", "mini02", "mini03"];
+let lastStatuses = {};
 const RAW = "https://raw.githubusercontent.com/gianboc/ministatus/data/";
 const Q = new URLSearchParams(location.search);
 const STALE_MIN = +(Q.get("stale_min") || 12);   // raw CDN caches ~5 min; 12 = 2 beats + cache
@@ -203,6 +230,75 @@ function card(host, s, boots, peerObs) {
       ${boots.map(b => `<span>${fmtWhen(b.t)} · ${fmtAgo(Date.now() / 1000 - b.t)}</span>`).join("")}
     </div>` : ""}
   </div>`;
+}
+
+// ---- Slurm queue tile + wait estimator ----
+function slurmSec(x) {           // "1-02:30:00" / "02:30:00" / "45:10" → seconds; null if no limit
+  if (!x || /UNLIM|INVALID|NOT_SET|N\/A/i.test(x)) return null;
+  let d = 0, r = x;
+  const m = x.match(/^(\d+)-(.*)$/);
+  if (m) { d = +m[1]; r = m[2]; }
+  const p = r.split(":").map(Number);
+  if (p.some(isNaN)) return null;
+  const s = p.length === 3 ? p[0] * 3600 + p[1] * 60 + p[2]
+          : p.length === 2 ? p[0] * 60 + p[1] : p[0] * 60;
+  return d * 86400 + s;
+}
+const memGBof = m => { const v = parseFloat(m) || 0;
+  return /T/i.test(m) ? v * 1024 : /G/i.test(m) ? v : v / 1024; };
+
+// worst-case wait for (reqC cores, reqG GB): running jobs hold resources until their
+// time limit; pending jobs start FIFO ahead of ours. Returns {wait}|{unknown}|{impossible}.
+function estimateWait(s, reqC, reqG) {
+  const totC = s.cores, totG = s.mem_total / 2 ** 30;
+  if (reqC > totC || reqG > totG) return { impossible: true };
+  const jobs = s.slurm_jobs || [];
+  let act = jobs.filter(j => j.st === "R").map(j => ({ c: j.c, g: memGBof(j.mem),
+    rem: (slurmSec(j.lim) != null && slurmSec(j.el) != null) ? Math.max(0, slurmSec(j.lim) - slurmSec(j.el)) : null }));
+  const q = jobs.filter(j => j.st === "P").map(j => ({ c: j.c, g: memGBof(j.mem), dur: slurmSec(j.lim) }));
+  q.push({ c: reqC, g: reqG, ours: true });
+  let t = 0;
+  for (let iter = 0; iter < 400; iter++) {
+    while (q.length) {
+      const usedC = act.reduce((a, j) => a + j.c, 0), usedG = act.reduce((a, j) => a + j.g, 0);
+      const j = q[0];
+      if (j.c <= totC - usedC && j.g <= totG - usedG) {
+        q.shift();
+        if (j.ours) return { wait: t };
+        if (j.dur == null) return { unknown: true };   // a no-limit job queued ahead of us
+        act.push({ c: j.c, g: j.g, rem: j.dur });
+      } else break;
+    }
+    const rems = act.map(j => j.rem).filter(r => r != null);
+    if (!rems.length) return { unknown: true };        // blocked only by jobs with no time limit
+    const dt = Math.min(...rems); t += dt;
+    act = act.filter(j => j.rem == null || (j.rem -= dt) > 0);
+  }
+  return { unknown: true };
+}
+
+function slurmCard(host, s) {
+  if (!s || !s.slurm_cores) return `<div class="chartcard"><h3>slurm queue
+    <span class="chstat">no scheduler data</span></h3></div>`;
+  const [a, i, , t] = s.slurm_cores.split("/").map(Number);
+  const jobs = s.slurm_jobs || [];
+  const run = jobs.filter(j => j.st === "R"), pend = jobs.filter(j => j.st === "P");
+  const usedG = run.reduce((x, j) => x + memGBof(j.mem), 0);
+  const freeG = Math.max(0, s.mem_total / 2 ** 30 - usedG);
+  const rems = run.map(j => (slurmSec(j.lim) != null && slurmSec(j.el) != null)
+    ? Math.max(0, slurmSec(j.lim) - slurmSec(j.el)) : null);
+  let nextLine = "";
+  if (run.length) {
+    const known = rems.filter(r => r != null);
+    nextLine = known.length
+      ? `next job ends in ≤ <b>${fmtDur(Math.min(...known))}</b>`
+      : `running job(s) have <b>no time limit</b>`;
+    if (rems.some(r => r == null) && known.length) nextLine += " · some have no limit";
+  }
+  return `<div class="chartcard"><h3>slurm queue
+      <span class="chstat">${run.length} running · ${pend.length} queued</span></h3>
+    <p class="kv" style="margin:0">free now: <b>${i} cores</b> · <b>${freeG.toFixed(0)} GB</b>
+      ${nextLine ? " — " + nextLine : ""}</p></div>`;
 }
 
 // ---- load-history charts (t,load1 CSV → % of cores) ----
@@ -312,9 +408,10 @@ async function refresh() {
       const so = statuses[o];
       return (so && (now - so.t) / 60 < STALE_MIN && so.peers && h in so.peers) ? so.peers[h] : null;
     });
-    return `<div class="col">${card(h, statuses[h], boots, peerObs)}${nodeCharts(h, statuses[h], histMap[h])}</div>`;
+    return `<div class="col">${card(h, statuses[h], boots, peerObs)}${slurmCard(h, statuses[h])}${nodeCharts(h, statuses[h], histMap[h])}</div>`;
   });
   document.getElementById("grid").innerHTML = cols.join("");
+  lastStatuses = statuses;
 
   const evs = allEvs.slice(0, 12);
   document.getElementById("events").innerHTML =
@@ -324,6 +421,30 @@ async function refresh() {
     "checked GitHub " + new Date().toLocaleTimeString() +
     " · data itself may be a few minutes older — see the freshness note below";
 }
+document.getElementById("pbtn").addEventListener("click", () => {
+  const reqC = +document.getElementById("pc").value || 1;
+  const reqG = +document.getElementById("pg").value || 1;
+  const reqH = +document.getElementById("ph").value || 1;
+  const now = Date.now() / 1000;
+  const rows = NODES.map(h => {
+    const s = lastStatuses[h];
+    if (!s || (now - s.t) / 60 > STALE_MIN) return { h, text: "no fresh data — can't estimate" };
+    const e = estimateWait(s, reqC, reqG);
+    if (e.impossible) return { h, text: `won't fit (${s.cores} cores / ${(s.mem_total / 2 ** 30).toFixed(0)} GB max)` };
+    if (e.unknown) return { h, text: "can't estimate — blocked behind job(s) with no time limit" };
+    const doneAt = new Date((now + e.wait + reqH * 3600) * 1000)
+      .toLocaleString(undefined, { weekday: "short", hour: "2-digit", minute: "2-digit" });
+    return { h, wait: e.wait,
+      text: e.wait === 0 ? `starts now → done by ~${doneAt}`
+                         : `worst-case wait ~${fmtDur(e.wait)} → done by ~${doneAt}` };
+  });
+  const best = rows.filter(r => r.wait !== undefined).sort((a, b) => a.wait - b.wait)[0];
+  document.getElementById("pout").innerHTML = rows.map(r => {
+    const isBest = best && r.h === best.h;
+    return `<div class="${isBest ? "rec" : ""}"><span class="dot">${isBest ? "✓" : "·"}</span><b>${r.h}</b> — ${r.text}${isBest ? "  ← submit here" : ""}</div>`;
+  }).join("");
+});
+
 refresh();
 setInterval(refresh, 60000);
 </script>
