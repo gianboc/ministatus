@@ -13,8 +13,9 @@ TMP=$(mktemp)
 for f in /var/log/sysstat/sa[0-9][0-9]; do
   [ -e "$f" ] || continue
   # sadf -d -U → "host;interval;epoch;runq;plist;ldavg-1;..." ; keep epoch,ldavg-1
+  # || true: a single corrupt archive (e.g. the day of a hard crash) must not kill the run
   LANG=C sadf -d -U "$f" -- -q 2>/dev/null \
-    | awk -F';' 'NR>1 && $3 ~ /^[0-9]+$/ {print $3","$6}'
+    | awk -F';' 'NR>1 && $3 ~ /^[0-9]+$/ {print $3","$6}' || true
 done | sort -t, -k1,1n | awk -F, '!seen[$1]++' > "$TMP"
 
 mkdir -p history
