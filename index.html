@@ -59,6 +59,10 @@
   .fill { height: 100%; border-radius: 4px; background: var(--meter); min-width: 2px; }
   .stats { display: flex; gap: 16px; margin-top: 12px; font-size: 12.5px; color: var(--muted); }
   .stats b { color: var(--ink-2); font-weight: 600; font-variant-numeric: tabular-nums; }
+  .boots { margin-top: 12px; padding-top: 8px; border-top: 1px solid var(--hairline);
+           font-size: 12px; display: grid; gap: 2px; }
+  .boots .bl { color: var(--muted); font-weight: 650; letter-spacing: .02em; }
+  .boots span { color: var(--ink-2); font-variant-numeric: tabular-nums; }
   .ghost { color: var(--muted); }
   .ghost h2 { color: var(--muted); }
   section.events { margin-top: 28px; }
@@ -121,7 +125,10 @@ function meter(label, val, max, text, hot) {
     <span class="mval">${text}${hot ? " ⚠" : ""}</span></div>`;
 }
 
-function card(host, s) {
+const fmtWhen = t => new Date(t * 1000).toLocaleString(undefined,
+  { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" });
+
+function card(host, s, boots) {
   if (!s) return `<div class="card ghost"><h2>${host}</h2>
     <p class="kv">not reporting yet</p></div>`;
   const now = Date.now() / 1000;
@@ -147,6 +154,9 @@ function card(host, s) {
       <span>sessions <b>${s.sessions}</b></span>
       <span>slurm <b>${s.slurm_running}</b> running · <b>${s.slurm_pending}</b> queued</span>
     </div>
+    ${boots && boots.length ? `<div class="boots"><span class="bl">last reboots</span>
+      ${boots.map(b => `<span>${fmtWhen(b.t)} · ${fmtAgo(Date.now() / 1000 - b.t)}</span>`).join("")}
+    </div>` : ""}
   </div>`;
 }
 
@@ -169,17 +179,20 @@ async function grab(url) {
 }
 
 async function refresh() {
+  const evTxts = await Promise.all(NODES.map(h => grab(RAW + "events/" + h + ".jsonl")));
+  const allEvs = evTxts.filter(Boolean).flatMap(t => t.trim().split("\n").map(l => {
+    try { return JSON.parse(l); } catch { return null; }
+  })).filter(Boolean).sort((a, b) => b.t - a.t);
+
   const cards = await Promise.all(NODES.map(async h => {
     const txt = await grab(RAW + "status/" + h + ".json");
     let s = null; try { s = txt && JSON.parse(txt); } catch {}
-    return card(h, s);
+    const boots = allEvs.filter(e => e.host === h && e.event === "boot").slice(0, 5);
+    return card(h, s, boots);
   }));
   document.getElementById("grid").innerHTML = cards.join("");
 
-  const evTxts = await Promise.all(NODES.map(h => grab(RAW + "events/" + h + ".jsonl")));
-  const evs = evTxts.filter(Boolean).flatMap(t => t.trim().split("\n").map(l => {
-    try { return JSON.parse(l); } catch { return null; }
-  })).filter(Boolean).sort((a, b) => b.t - a.t).slice(0, 12);
+  const evs = allEvs.slice(0, 12);
   document.getElementById("events").innerHTML =
     evs.length ? evs.map(eventRow).join("") : `<span class="sub">no events recorded yet</span>`;
 
