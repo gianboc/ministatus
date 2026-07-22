@@ -30,6 +30,16 @@ SESSIONS=$(who | wc -l)
 SLURM_R=$( (timeout 5 squeue -h -t R 2>/dev/null || true) | wc -l )
 SLURM_PD=$( (timeout 5 squeue -h -t PD 2>/dev/null || true) | wc -l )
 
+# peer reachability (TCP :22) — lets the page tell "machine down" apart from
+# "machine fine but its own reporting broke" (cron dead, GitHub unreachable)
+PEERS_JSON=""
+for p in mini01 mini02 mini03; do
+  [ "$p" = "$HOST" ] && continue
+  if timeout 2 bash -c "</dev/tcp/$p.polito.it/22" 2>/dev/null; then up=true; else up=false; fi
+  PEERS_JSON="$PEERS_JSON\"$p\": $up, "
+done
+PEERS_JSON=${PEERS_JSON%, }
+
 mkdir -p status events
 cat > "status/$HOST.json" <<EOF
 {
@@ -45,9 +55,21 @@ cat > "status/$HOST.json" <<EOF
   "disk_home_pct": ${DISK_HOME:-0},
   "sessions": $SESSIONS,
   "slurm_running": $SLURM_R,
-  "slurm_pending": $SLURM_PD
+  "slurm_pending": $SLURM_PD,
+  "peers": {$PEERS_JSON}
 }
 EOF
+
+# append to load history (t,load1) — feeds the page's 24h/7d/30d charts;
+# prune to a 35-day window only when the oldest entry has aged out
+mkdir -p history
+echo "$NOW,$L1" >> "history/$HOST.csv"
+CUTOFF=$(( NOW - 35*86400 ))
+FIRST=$(head -1 "history/$HOST.csv" | cut -d, -f1)
+if [ -n "$FIRST" ] && [ "$FIRST" -lt "$CUTOFF" ]; then
+  awk -F, -v c="$CUTOFF" '$1>=c' "history/$HOST.csv" > "history/$HOST.csv.tmp" \
+    && mv "history/$HOST.csv.tmp" "history/$HOST.csv"
+fi
 
 MSG="hb $HOST"
 EVENT="${1:-}"

@@ -19,6 +19,14 @@ who's alive.
 - The page compares each node's last heartbeat with the current time in *your*
   browser: a machine can't report that it's dead, but silence can — no heartbeat
   for >20 min shows as **likely down**.
+- **Peer checks**: each heartbeat also TCP-probes the other minis' SSH port and
+  records the result. A silent node that fresh peers can still reach shows as
+  **not reporting** (its reporting broke); one they can't reach shows as
+  **unreachable** (peer-confirmed down, ~5–10 min detection).
+- **Load history**: every heartbeat appends `t,load1` to `history/<host>.csv`
+  (pruned to a 35-day window). The page renders 24 h / 7 d / 30 d charts of load
+  as % of cores under each tile. [`node/backfill_sar.sh`](node/backfill_sar.sh)
+  seeds the file from the node's existing sysstat archives on enrollment.
 - Machine vitals only: no usernames, no job names.
 
 ## Enrolling a node
