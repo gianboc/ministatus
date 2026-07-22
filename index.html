@@ -63,6 +63,7 @@
            font-size: 12px; display: grid; gap: 2px; }
   .boots .bl { color: var(--muted); font-weight: 650; letter-spacing: .02em; }
   .boots span { color: var(--ink-2); font-variant-numeric: tabular-nums; }
+  .boots .nb { color: var(--muted); }
   .col { display: grid; gap: 10px; align-content: start; }
   .chartcard { background: var(--surface); border: 1px solid var(--hairline); border-radius: 10px;
                padding: 10px 12px 8px; }
@@ -230,9 +231,11 @@ function card(host, s, boots, peerObs) {
       <span>sessions <b>${s.sessions}</b></span>
       <span>slurm <b>${s.slurm_running}</b> running · <b>${s.slurm_pending}</b> queued</span>
     </div>
-    ${boots && boots.length ? `<div class="boots"><span class="bl">last reboots</span>
-      ${boots.map(b => `<span>${fmtWhen(b.t)} · ${fmtAgo(Date.now() / 1000 - b.t)}</span>`).join("")}
-    </div>` : ""}
+    <div class="boots"><span class="bl">last reboots</span>
+      ${boots && boots.length
+        ? boots.map(b => `<span>${fmtWhen(b.t)} · ${fmtAgo(Date.now() / 1000 - b.t)}</span>`).join("")
+        : `<span class="nb">none recorded yet</span>`}
+    </div>
   </div>`;
 }
 
