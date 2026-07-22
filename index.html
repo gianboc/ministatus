@@ -1,0 +1,193 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>mini fleet status</title>
+<style>
+  :root {
+    color-scheme: light;
+    --plane: #f9f9f7; --surface: #fcfcfb;
+    --ink: #0b0b0b; --ink-2: #52514e; --muted: #898781;
+    --hairline: rgba(11,11,11,0.10); --track: #e1e0d9;
+    --meter: #2a78d6;
+    --good: #0ca30c; --warn: #fab219; --serious: #ec835a; --crit: #d03b3b;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      color-scheme: dark;
+      --plane: #0d0d0d; --surface: #1a1a19;
+      --ink: #ffffff; --ink-2: #c3c2b7; --muted: #898781;
+      --hairline: rgba(255,255,255,0.10); --track: #2c2c2a;
+      --meter: #3987e5;
+    }
+  }
+  :root[data-theme="dark"] {
+    color-scheme: dark;
+    --plane: #0d0d0d; --surface: #1a1a19;
+    --ink: #ffffff; --ink-2: #c3c2b7; --muted: #898781;
+    --hairline: rgba(255,255,255,0.10); --track: #2c2c2a;
+    --meter: #3987e5;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; padding: 24px 16px 48px; background: var(--plane); color: var(--ink);
+    font: 15px/1.45 system-ui, -apple-system, "Segoe UI", sans-serif;
+  }
+  .wrap { max-width: 960px; margin: 0 auto; }
+  header { display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap; margin-bottom: 18px; }
+  h1 { font-size: 20px; margin: 0; font-weight: 650; }
+  .sub { color: var(--muted); font-size: 13px; }
+  .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 14px; }
+  .card {
+    background: var(--surface); border: 1px solid var(--hairline); border-radius: 10px;
+    padding: 16px 18px; min-height: 120px;
+  }
+  .card h2 { margin: 0; font-size: 17px; font-weight: 650; display: flex; align-items: center; gap: 10px; }
+  .badge { display: inline-flex; align-items: center; gap: 6px; font-size: 12.5px; font-weight: 650;
+           letter-spacing: .02em; color: var(--ink-2); }
+  .dot { width: 9px; height: 9px; border-radius: 50%; flex: none; }
+  .kv { margin: 10px 0 0; font-size: 13px; color: var(--ink-2); }
+  .kv b { color: var(--ink); font-weight: 600; }
+  .chip { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 650;
+          border: 1px solid var(--hairline); border-radius: 999px; padding: 2px 9px; margin-top: 8px; }
+  .meters { margin-top: 12px; display: grid; gap: 7px; }
+  .mrow { display: grid; grid-template-columns: 52px 1fr 86px; align-items: center; gap: 9px;
+          font-size: 12px; color: var(--muted); }
+  .mval { text-align: right; color: var(--ink-2); font-variant-numeric: tabular-nums; }
+  .track { height: 8px; border-radius: 4px; background: var(--track); overflow: hidden; }
+  .fill { height: 100%; border-radius: 4px; background: var(--meter); min-width: 2px; }
+  .stats { display: flex; gap: 16px; margin-top: 12px; font-size: 12.5px; color: var(--muted); }
+  .stats b { color: var(--ink-2); font-weight: 600; font-variant-numeric: tabular-nums; }
+  .ghost { color: var(--muted); }
+  .ghost h2 { color: var(--muted); }
+  section.events { margin-top: 28px; }
+  section.events h2 { font-size: 15px; font-weight: 650; margin: 0 0 8px; }
+  .ev { display: flex; gap: 10px; align-items: baseline; padding: 7px 4px; border-top: 1px solid var(--hairline);
+        font-size: 13.5px; }
+  .ev time { color: var(--muted); font-size: 12.5px; white-space: nowrap; font-variant-numeric: tabular-nums; }
+  .ev .what { font-weight: 650; display: inline-flex; align-items: center; gap: 6px; }
+  footer { margin-top: 34px; color: var(--muted); font-size: 12px; }
+  footer a { color: inherit; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1>mini fleet status</h1>
+    <span class="sub" id="updated">loading…</span>
+  </header>
+  <div class="grid" id="grid"></div>
+  <section class="events">
+    <h2>Recent events</h2>
+    <div id="events"><span class="sub">loading…</span></div>
+  </section>
+  <footer>
+    Heartbeats every 5 min from each node via cron → git. Silence &gt;20 min ⇒ <b>likely down</b>.
+    Page refreshes itself every 60 s. <a href="https://github.com/gianboc/ministatus">How it works</a>.
+  </footer>
+</div>
+<script>
+const NODES = ["mini01", "mini02", "mini03"];
+const RAW = "https://raw.githubusercontent.com/gianboc/ministatus/data/";
+const Q = new URLSearchParams(location.search);
+const STALE_MIN = +(Q.get("stale_min") || 12);   // raw CDN caches ~5 min; 12 = 2 beats + cache
+const DOWN_MIN  = +(Q.get("down_min")  || 20);
+
+const fmtAgo = s => {
+  if (s < 0) s = 0;
+  if (s < 90) return Math.round(s) + "s ago";
+  if (s < 5400) return Math.round(s / 60) + "m ago";
+  if (s < 172800) return (s / 3600).toFixed(1) + "h ago";
+  return Math.round(s / 86400) + "d ago";
+};
+const fmtDur = s => {
+  const d = Math.floor(s / 86400), h = Math.floor(s % 86400 / 3600), m = Math.floor(s % 3600 / 60);
+  return d ? `${d}d ${h}h` : h ? `${h}h ${m}m` : `${m}m`;
+};
+const fmtGB = b => (b / 1073741824).toFixed(0);
+
+function state(ageMin) {
+  if (ageMin < STALE_MIN) return { label: "UP", color: "var(--good)", icon: "●" };
+  if (ageMin < DOWN_MIN)  return { label: "STALE", color: "var(--warn)", icon: "◐" };
+  return { label: "LIKELY DOWN", color: "var(--crit)", icon: "✕" };
+}
+
+function meter(label, val, max, text, hot) {
+  const pct = Math.max(0, Math.min(100, 100 * val / max));
+  const color = hot ? "var(--serious)" : "var(--meter)";
+  return `<div class="mrow"><span>${label}</span>
+    <div class="track"><div class="fill" style="width:${pct}%;background:${color}"></div></div>
+    <span class="mval">${text}${hot ? " ⚠" : ""}</span></div>`;
+}
+
+function card(host, s) {
+  if (!s) return `<div class="card ghost"><h2>${host}</h2>
+    <p class="kv">not reporting yet</p></div>`;
+  const now = Date.now() / 1000;
+  const ageMin = (now - s.t) / 60;
+  const st = state(ageMin);
+  const bootAge = now - s.boot;
+  const recentBoot = bootAge < 86400;
+  const loadHot = s.load[0] > s.cores;
+  const memPct = 100 * s.mem_used / s.mem_total;
+  return `<div class="card">
+    <h2>${s.host}
+      <span class="badge"><span class="dot" style="background:${st.color}"></span>${st.icon} ${st.label}</span>
+    </h2>
+    <p class="kv">heartbeat <b>${fmtAgo(now - s.t)}</b> · up <b>${fmtDur(s.uptime_s + (now - s.t))}</b></p>
+    ${recentBoot ? `<span class="chip"><span class="dot" style="background:var(--warn)"></span>⚠ rebooted ${fmtAgo(bootAge)}</span>` : ""}
+    <div class="meters">
+      ${meter("load", s.load[0], s.cores, `${s.load[0].toFixed(1)} / ${s.cores}`, loadHot)}
+      ${meter("RAM", memPct, 100, `${fmtGB(s.mem_used)} / ${fmtGB(s.mem_total)} GB`, memPct > 90)}
+      ${meter("disk /", s.disk_root_pct, 100, s.disk_root_pct + "%", s.disk_root_pct > 90)}
+      ${meter("/home", s.disk_home_pct, 100, s.disk_home_pct + "%", s.disk_home_pct > 90)}
+    </div>
+    <div class="stats">
+      <span>sessions <b>${s.sessions}</b></span>
+      <span>slurm <b>${s.slurm_running}</b> running · <b>${s.slurm_pending}</b> queued</span>
+    </div>
+  </div>`;
+}
+
+function eventRow(e) {
+  const isBoot = e.event === "boot";
+  const color = isBoot ? "var(--warn)" : "var(--muted)";
+  const when = new Date(e.t * 1000);
+  return `<div class="ev">
+    <span class="what"><span class="dot" style="background:${color}"></span>${isBoot ? "⚠ REBOOT" : e.event.toUpperCase()}</span>
+    <span>${e.host}</span>
+    <time>${when.toLocaleString()} · ${fmtAgo(Date.now() / 1000 - e.t)}</time>
+  </div>`;
+}
+
+async function grab(url) {
+  try {
+    const r = await fetch(url + "?x=" + Date.now(), { cache: "no-store" });
+    return r.ok ? await r.text() : null;
+  } catch { return null; }
+}
+
+async function refresh() {
+  const cards = await Promise.all(NODES.map(async h => {
+    const txt = await grab(RAW + "status/" + h + ".json");
+    let s = null; try { s = txt && JSON.parse(txt); } catch {}
+    return card(h, s);
+  }));
+  document.getElementById("grid").innerHTML = cards.join("");
+
+  const evTxts = await Promise.all(NODES.map(h => grab(RAW + "events/" + h + ".jsonl")));
+  const evs = evTxts.filter(Boolean).flatMap(t => t.trim().split("\n").map(l => {
+    try { return JSON.parse(l); } catch { return null; }
+  })).filter(Boolean).sort((a, b) => b.t - a.t).slice(0, 12);
+  document.getElementById("events").innerHTML =
+    evs.length ? evs.map(eventRow).join("") : `<span class="sub">no events recorded yet</span>`;
+
+  document.getElementById("updated").textContent =
+    "checked " + new Date().toLocaleTimeString() + " · auto-refreshes every 60 s";
+}
+refresh();
+setInterval(refresh, 60000);
+</script>
+</body>
+</html>
