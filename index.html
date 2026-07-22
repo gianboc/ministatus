@@ -81,6 +81,11 @@
   .ghost h2 { color: var(--muted); }
   section.events { margin-top: 28px; }
   section.events h2 { font-size: 15px; font-weight: 650; margin: 0 0 8px; }
+  section.fine { margin-top: 30px; border-top: 1px solid var(--hairline); padding-top: 14px; }
+  section.fine h2 { font-size: 14px; font-weight: 650; margin: 0 0 8px; }
+  section.fine ul { margin: 0; padding-left: 18px; font-size: 13px; color: var(--ink-2); }
+  section.fine li { margin-bottom: 7px; }
+  section.fine b { color: var(--ink); }
   .ev { display: flex; gap: 10px; align-items: baseline; padding: 7px 4px; border-top: 1px solid var(--hairline);
         font-size: 13.5px; }
   .ev time { color: var(--muted); font-size: 12.5px; white-space: nowrap; font-variant-numeric: tabular-nums; }
@@ -101,11 +106,26 @@
     <div id="events"><span class="sub">loading…</span></div>
   </section>
   <div id="tip"></div>
+  <section class="fine">
+    <h2>How fresh is what you see?</h2>
+    <ul>
+      <li><b>Each machine reports every 5 minutes.</b> The "heartbeat … ago" on a tile is the true age
+        of that machine's numbers — it is the figure to trust.</li>
+      <li><b>GitHub adds its own small delay.</b> The machines write their numbers to GitHub, and GitHub
+        hands this page a copy it may have kept for up to ~5 minutes. So in the worst case what you see
+        is 5–10 minutes behind reality — normal for this page, and fine for its purpose.</li>
+      <li><b>"checked …" in the header is only when this page last asked GitHub</b> (it re-asks every
+        60 seconds). A page checked seconds ago can still be showing numbers a few minutes old — the two
+        times measure different things.</li>
+      <li><b>What the badges mean:</b> a heartbeat younger than ~12 min is normal (<b>UP</b>). If a machine
+        goes silent but the other minis can still reach it, it's <b>not reporting</b> — the machine is fine,
+        only its reporting broke. If its peers can't reach it either, it's <b>unreachable</b> — really down.
+        Silence over 20 min with no peer information shows as <b>likely down</b>.</li>
+    </ul>
+  </section>
   <footer>
     Heartbeats every 5 min from each node via cron → git; each node also checks its peers' SSH port.
-    A silent node that fresh peers can still reach ⇒ <b>not reporting</b>; one they can't ⇒ <b>unreachable</b>;
-    silence &gt;20 min with no peer data ⇒ <b>likely down</b>.
-    Page refreshes itself every 60 s. <a href="https://github.com/gianboc/ministatus">How it works</a>.
+    <a href="https://github.com/gianboc/ministatus">How it works</a>.
   </footer>
 </div>
 <script>
@@ -301,7 +321,8 @@ async function refresh() {
     evs.length ? evs.map(eventRow).join("") : `<span class="sub">no events recorded yet</span>`;
 
   document.getElementById("updated").textContent =
-    "checked " + new Date().toLocaleTimeString() + " · auto-refreshes every 60 s";
+    "checked GitHub " + new Date().toLocaleTimeString() +
+    " · data itself may be a few minutes older — see the freshness note below";
 }
 refresh();
 setInterval(refresh, 60000);
