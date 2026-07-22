@@ -14,6 +14,9 @@ cd "$(dirname "$(readlink -f "$0")")"
 exec 9>"$HOME/.ministatus.lock"
 flock -n 9 || exit 0
 
+# sync BEFORE writing anything — a rebase pull refuses to run on a dirty tree
+git pull --rebase -q origin data || true
+
 HOST=$(hostname -s)
 NOW=$(date -u +%s)
 UPTIME_S=$(cut -d. -f1 /proc/uptime)
@@ -78,7 +81,6 @@ if [ -n "$EVENT" ]; then
   MSG="$(printf '%s' "$EVENT" | tr '[:lower:]' '[:upper:]') $HOST $(date -u -d "@$NOW" +%Y-%m-%dT%H:%M:%SZ)"
 fi
 
-git pull --rebase -q origin data || true
 git add -A
 git commit -q -m "$MSG" || exit 0        # nothing changed, nothing to push
 git push -q origin data || {
