@@ -81,10 +81,11 @@
   .ghost h2 { color: var(--muted); }
   section.events { margin-top: 28px; }
   section.events h2 { font-size: 15px; font-weight: 650; margin: 0 0 8px; }
-  section.planner { margin-top: 28px; background: var(--surface); border: 1px solid var(--hairline);
-                    border-radius: 10px; padding: 14px 18px; }
-  section.planner h2 { font-size: 15px; font-weight: 650; margin: 0 0 10px; }
-  .prow { display: flex; gap: 14px; align-items: end; flex-wrap: wrap; }
+  .band { margin-top: 14px; }
+  section.planner { margin: 24px auto 0; max-width: 640px; background: var(--surface);
+                    border: 1px solid var(--hairline); border-radius: 10px; padding: 14px 18px; }
+  section.planner h2 { font-size: 16px; font-weight: 650; margin: 0 0 2px; text-align: center; }
+  .prow { display: flex; gap: 14px; align-items: end; flex-wrap: wrap; justify-content: center; }
   .prow label { font-size: 12.5px; color: var(--muted); display: grid; gap: 3px; }
   .prow input { width: 76px; padding: 5px 8px; font: inherit; color: var(--ink);
                 background: var(--plane); border: 1px solid var(--hairline); border-radius: 6px; }
@@ -114,9 +115,11 @@
     <h1>mini fleet status</h1>
     <span class="sub" id="updated">loading…</span>
   </header>
-  <div class="grid" id="grid"></div>
+  <div class="grid" id="grid-status"></div>
+  <div class="grid band" id="grid-slurm"></div>
   <section class="planner">
-    <h2>Where should I run my job?</h2>
+    <h2>Minihelper</h2>
+    <p class="sub" style="text-align:center; margin:0 0 10px">Tell it what your job needs — it tells you where to submit.</p>
     <div class="prow">
       <label>cores <input id="pc" type="number" min="1" max="48" value="8"></label>
       <label>RAM (GB) <input id="pg" type="number" min="1" max="252" value="50"></label>
@@ -127,6 +130,7 @@
     <p class="sub">Worst-case estimates: they assume every job runs to its full time limit —
       real waits are usually shorter, never longer.</p>
   </section>
+  <div class="grid band" id="grid-charts"></div>
   <section class="events">
     <h2>Recent events</h2>
     <div id="events"><span class="sub">loading…</span></div>
@@ -401,16 +405,19 @@ async function refresh() {
       .filter(p => isFinite(p[0]) && isFinite(p[1]));
   });
 
-  const cols = NODES.map(h => {
+  document.getElementById("grid-status").innerHTML = NODES.map(h => {
     const boots = allEvs.filter(e => e.host === h && e.event === "boot").slice(0, 5);
     // collect fresh peers' opinion of this host
     const peerObs = NODES.filter(o => o !== h).map(o => {
       const so = statuses[o];
       return (so && (now - so.t) / 60 < STALE_MIN && so.peers && h in so.peers) ? so.peers[h] : null;
     });
-    return `<div class="col">${card(h, statuses[h], boots, peerObs)}${slurmCard(h, statuses[h])}${nodeCharts(h, statuses[h], histMap[h])}</div>`;
-  });
-  document.getElementById("grid").innerHTML = cols.join("");
+    return card(h, statuses[h], boots, peerObs);
+  }).join("");
+  document.getElementById("grid-slurm").innerHTML =
+    NODES.map(h => slurmCard(h, statuses[h])).join("");
+  document.getElementById("grid-charts").innerHTML =
+    NODES.map(h => `<div class="col">${nodeCharts(h, statuses[h], histMap[h])}</div>`).join("");
   lastStatuses = statuses;
 
   const evs = allEvs.slice(0, 12);
