@@ -161,6 +161,8 @@
 </div>
 <script>
 const NODES = ["mini01", "mini02", "mini03"];
+// nodes that report vitals but are NOT part of the Slurm cluster — don't submit jobs here
+const SLURM_UNAVAILABLE = { mini02: "not a Slurm compute node — do not submit jobs here" };
 let lastStatuses = {};
 const RAW = "https://raw.githubusercontent.com/gianboc/ministatus/data/";
 const Q = new URLSearchParams(location.search);
@@ -226,10 +228,15 @@ function card(host, s, boots, peerObs) {
       ${meter("RAM", memPct, 100, `${fmtGB(s.mem_used)} / ${fmtGB(s.mem_total)} GB`, memPct > 90)}
       ${meter("disk /", s.disk_root_pct, 100, s.disk_root_pct + "%", s.disk_root_pct > 90)}
       ${meter("/home", s.disk_home_pct, 100, s.disk_home_pct + "%", s.disk_home_pct > 90)}
+      ${s.disk_home2_pct != null
+        ? meter("/home2", s.disk_home2_pct, 100, s.disk_home2_pct + "%", s.disk_home2_pct > 90)
+        : ""}
     </div>
     <div class="stats">
       <span>sessions <b>${s.sessions}</b></span>
-      <span>slurm <b>${s.slurm_running}</b> running · <b>${s.slurm_pending}</b> queued</span>
+      ${SLURM_UNAVAILABLE[host]
+        ? `<span title="${SLURM_UNAVAILABLE[host]}">slurm <b>⛔ not available</b></span>`
+        : `<span>slurm <b>${s.slurm_running}</b> running · <b>${s.slurm_pending}</b> queued</span>`}
     </div>
     <div class="boots"><span class="bl">last reboots</span>
       ${boots && boots.length
@@ -285,6 +292,9 @@ function estimateWait(s, reqC, reqG) {
 }
 
 function slurmCard(host, s) {
+  if (SLURM_UNAVAILABLE[host]) return `<div class="chartcard"><h3>slurm queue
+    <span class="chstat">not available</span></h3>
+    <p class="kv" style="margin:0">⛔ ${SLURM_UNAVAILABLE[host]}</p></div>`;
   if (!s || !s.slurm_cores) return `<div class="chartcard"><h3>slurm queue
     <span class="chstat">no scheduler data</span></h3></div>`;
   const [a, i, , t] = s.slurm_cores.split("/").map(Number);
@@ -437,6 +447,7 @@ document.getElementById("pbtn").addEventListener("click", () => {
   const reqH = +document.getElementById("ph").value || 1;
   const now = Date.now() / 1000;
   const rows = NODES.map(h => {
+    if (SLURM_UNAVAILABLE[h]) return { h, text: "not a Slurm node — can't submit here" };
     const s = lastStatuses[h];
     if (!s || (now - s.t) / 60 > STALE_MIN) return { h, text: "no fresh data — can't estimate" };
     const e = estimateWait(s, reqC, reqG);
