@@ -28,6 +28,8 @@ MEM_AVAIL=$(awk '/^MemAvailable/{print $2*1024}' /proc/meminfo)
 MEM_USED=$(( MEM_TOTAL - MEM_AVAIL ))
 DISK_ROOT=$(df --output=pcent / | tail -1 | tr -dc 0-9)
 DISK_HOME=$(df --output=pcent /home 2>/dev/null | tail -1 | tr -dc 0-9)
+# /home2 exists only on some nodes; leave it null (not 0) where absent so the page skips the meter
+DISK_HOME2=$(df --output=pcent /home2 2>/dev/null | tail -1 | tr -dc 0-9)
 SESSIONS=$(who | wc -l)
 # counts only; -1 would mean "no scheduler answer" but wc gives 0 either way — acceptable v0
 SLURM_R=$( (timeout 5 squeue -h -t R 2>/dev/null || true) | wc -l )
@@ -61,6 +63,7 @@ cat > "status/$HOST.json" <<EOF
   "mem_total": $MEM_TOTAL,
   "disk_root_pct": ${DISK_ROOT:-0},
   "disk_home_pct": ${DISK_HOME:-0},
+  "disk_home2_pct": ${DISK_HOME2:-null},
   "sessions": $SESSIONS,
   "slurm_running": $SLURM_R,
   "slurm_pending": $SLURM_PD,
