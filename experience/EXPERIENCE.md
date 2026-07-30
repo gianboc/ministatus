@@ -17,6 +17,17 @@ not derivable from reading the code. See README for what the system *is*.
   288 pushes/day against the Pages branch would throttle site deploys
   permanently. (observed 2026-07-22)
 
+- **A hard crash can corrupt the reporter's own git clone — and reporting then
+  fails silently forever.** mini01's crash on 2026-07-24 left a truncated object
+  in `~/ministatus/.git` (`object file … is empty`, `fatal: bad object HEAD`);
+  every cron run after that — including `@reboot` — died instantly, so the node
+  showed "not reporting" for a week while being perfectly healthy. Telltale
+  signature on the data branch: missed beats, then several `hb` commits stamped
+  in the same second (queued cron runs on the dying machine), then silence.
+  `report.sh` now self-heals: on any git read failure it quarantines the clone
+  as `<dir>.corrupt-<ts>`, re-clones, and logs a `selfheal` event. (observed
+  2026-07-30)
+
 - **sar archives from a crash day can be corrupt and will kill a pipeline
   quietly.** One node's `sa` file from the day it was power-cycled made `sadf`
   exit non-zero with nothing on stdout; under `set -euo pipefail` with stderr

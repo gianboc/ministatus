@@ -14,6 +14,26 @@ cd "$(dirname "$(readlink -f "$0")")"
 exec 9>"$HOME/.ministatus.lock"
 flock -n 9 || exit 0
 
+# self-heal: a hard crash can leave this clone corrupt (truncated objects, bad
+# HEAD — seen on mini01, 2026-07-24), and every later run then dies here while
+# the page shows "not reporting" forever. If git can't even read the repo,
+# quarantine it and re-clone before carrying on.
+if ! { git status --porcelain >/dev/null 2>&1 && git rev-parse -q --verify HEAD >/dev/null 2>&1; }; then
+  URL=$(git config --get remote.origin.url 2>/dev/null) || URL="git@github-ministatus:gianboc/ministatus.git"
+  DIR=$PWD
+  cd ..
+  mv "$DIR" "$DIR.corrupt-$(date -u +%Y%m%d-%H%M%S)"
+  git clone -q -b data "$URL" "$DIR"
+  cd "$DIR"
+  git config user.name "$(hostname -s)-reporter"
+  git config user.email "ministatus@localhost"
+  git fetch -q origin main
+  git show origin/main:node/report.sh > report.sh
+  chmod +x report.sh
+  mkdir -p events
+  echo "{\"host\":\"$(hostname -s)\",\"event\":\"selfheal\",\"t\":$(date -u +%s)}" >> "events/$(hostname -s).jsonl"
+fi
+
 # sync BEFORE writing anything — a rebase pull refuses to run on a dirty tree
 git pull --rebase -q origin data || true
 
