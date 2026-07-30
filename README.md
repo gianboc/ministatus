@@ -27,6 +27,11 @@ who's alive.
   (pruned to a 35-day window). The page renders 24 h / 7 d / 30 d charts of load
   as % of cores under each tile. [`node/backfill_sar.sh`](node/backfill_sar.sh)
   seeds the file from the node's existing sysstat archives on enrollment.
+- **Monthly usage**: each heartbeat also updates `monthly/<host>.csv`
+  (`YYYY-MM,sum(load1),samples,cores`, kept to ~13 rows). Samples only exist while
+  a machine is on, so `sum/samples` is *average load while on* — planned downtime
+  never drags the number down — and `samples×5min` vs the month's length gives the
+  on-fraction. The page shows the last 12 months as bars (opacity = on-fraction).
 - Machine vitals only: no usernames, no job names.
 
 ## Enrolling a node

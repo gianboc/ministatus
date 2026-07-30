@@ -148,6 +148,9 @@
       <li><b>"checked …" in the header is only when this page last asked GitHub</b> (it re-asks every
         60 seconds). A page checked seconds ago can still be showing numbers a few minutes old — the two
         times measure different things.</li>
+      <li><b>The 12-month chart counts only time a machine was on.</b> Each bar is the average load
+        while the machine was actually running that month — planned shutdowns don't drag it down.
+        Faded bars mean the machine was off for much of that month; hover for the exact on-fraction.</li>
       <li><b>What the badges mean:</b> a heartbeat younger than ~12 min is normal (<b>UP</b>). If a machine
         goes silent but the other minis can still reach it, it's <b>not reporting</b> — the machine is fine,
         only its reporting broke. If its peers can't reach it either, it's <b>unreachable</b> — really down.
@@ -353,12 +356,51 @@ function chartCard(host, title, pts, cores, spanS) {
     </svg></div>`;
 }
 
-function nodeCharts(host, s, hist) {
+// ---- 12-month bars (monthly/<host>.csv: YYYY-MM,sum(load1),samples,cores) ----
+// samples only exist while the machine is on → avg is "usage while on";
+// samples×5min vs month length → on-fraction, encoded as bar opacity
+function monthlyCard(host, rows) {
+  const id = "mo-" + host;
+  if (!rows.length) return `<div class="chartcard"><h3>last 12 months
+    <span class="chstat">collecting…</span></h3></div>`;
+  const nowD = new Date(), nowS = Date.now() / 1000;
+  const slots = [];
+  for (let i = 11; i >= 0; i--)
+    slots.push(new Date(Date.UTC(nowD.getUTCFullYear(), nowD.getUTCMonth() - i, 1)).toISOString().slice(0, 7));
+  const byM = Object.fromEntries(rows.map(r => [r.m, r]));
+  const data = slots.map(m => {
+    const r = byM[m];
+    if (!r) return { m, avg: null, on: null };
+    const y = +m.slice(0, 4), mo = +m.slice(5, 7);
+    const start = Date.UTC(y, mo - 1, 1) / 1000, end = Date.UTC(y, mo, 1) / 1000;
+    const span = Math.max(1, Math.min(end, nowS) - start);
+    return { m, avg: 100 * r.sum / r.count / r.cores, on: Math.min(1, r.count * 300 / span) };
+  });
+  chartsData[id] = { monthly: data };
+  const yMax = Math.max(100, ...data.map(d => d.avg || 0));
+  const w = 100 / 12;
+  const bars = data.map((d, i) => {
+    if (d.avg == null) return "";
+    const h = Math.max(0.8, d.avg / yMax * 27);
+    return `<rect x="${(i * w + 1).toFixed(2)}" y="${(29 - h).toFixed(2)}" width="${(w - 2).toFixed(2)}"
+      height="${h.toFixed(2)}" rx="0.6" fill="var(--meter)" opacity="${(0.35 + 0.65 * d.on).toFixed(2)}"/>`;
+  }).join("");
+  const have = data.filter(d => d.avg != null);
+  const label = `avg ${fmt1(have.reduce((a, d) => a + d.avg, 0) / have.length)}% while on`;
+  return `<div class="chartcard">
+    <h3>last 12 months <span class="chstat">${label}</span></h3>
+    <svg viewBox="0 0 100 30" preserveAspectRatio="none" data-chart="${id}">
+      <line class="axis" x1="0" y1="29" x2="100" y2="29"/>${bars}
+    </svg></div>`;
+}
+
+function nodeCharts(host, s, hist, months) {
   const cores = (s && s.cores) || 48;
   const now = Date.now() / 1000;
   return chartCard(host, "last 24 h", series(hist, now, 86400, 0), cores, 86400)
        + chartCard(host, "last 7 d", series(hist, now, 7 * 86400, 7200), cores, 7 * 86400)
-       + chartCard(host, "last 30 d", series(hist, now, 30 * 86400, 28800), cores, 30 * 86400);
+       + chartCard(host, "last 30 d", series(hist, now, 30 * 86400, 28800), cores, 30 * 86400)
+       + monthlyCard(host, months || []);
 }
 
 const tipEl = () => document.getElementById("tip");
@@ -366,8 +408,17 @@ document.addEventListener("mousemove", e => {
   const svg = e.target.closest && e.target.closest("svg[data-chart]");
   const tip = tipEl();
   if (!svg || !chartsData[svg.dataset.chart]) { if (tip) tip.style.display = "none"; return; }
-  const { pts, cores, spanS } = chartsData[svg.dataset.chart];
+  const cd = chartsData[svg.dataset.chart];
   const r = svg.getBoundingClientRect();
+  if (cd.monthly) {
+    const i = Math.max(0, Math.min(11, Math.floor((e.clientX - r.left) / r.width * 12)));
+    const d = cd.monthly[i];
+    const name = new Date(d.m + "-01T00:00:00Z").toLocaleDateString(undefined, { month: "short", year: "numeric" });
+    tip.textContent = d.avg == null
+      ? `${name} · no data (machine off, or before tracking began)`
+      : `${name} · avg ${fmt1(d.avg)}% while on · on for ${Math.round(100 * d.on)}% of the month`;
+  } else {
+  const { pts, cores, spanS } = cd;
   const i = Math.max(0, Math.min(pts.length - 1,
     Math.round((e.clientX - r.left) / r.width * (pts.length - 1))));
   const [t, v] = pts[i];
@@ -376,6 +427,7 @@ document.addEventListener("mousemove", e => {
     ? d.toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" })
     : d.toLocaleString(undefined, { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" });
   tip.textContent = `${when} · load ${v.toFixed(1)} (${fmt1(100 * v / cores)}% of ${cores})`;
+  }
   tip.style.display = "block";
   tip.style.left = Math.min(e.clientX + 12, innerWidth - tip.offsetWidth - 8) + "px";
   tip.style.top = (e.clientY + 14) + "px";
@@ -418,6 +470,15 @@ async function refresh() {
       .filter(p => isFinite(p[0]) && isFinite(p[1]));
   });
 
+  const mons = await Promise.all(NODES.map(h => grab(RAW + "monthly/" + h + ".csv")));
+  const monMap = {};
+  NODES.forEach((h, i) => {
+    monMap[h] = (mons[i] || "").trim().split("\n").filter(Boolean)
+      .map(l => l.split(","))
+      .map(a => ({ m: a[0], sum: +a[1], count: +a[2], cores: +a[3] }))
+      .filter(r => /^\d{4}-\d{2}$/.test(r.m) && isFinite(r.sum) && r.count > 0 && r.cores > 0);
+  });
+
   document.getElementById("grid-status").innerHTML = NODES.map(h => {
     const boots = allEvs.filter(e => e.host === h && e.event === "boot").slice(0, 5);
     // collect fresh peers' opinion of this host
@@ -430,7 +491,7 @@ async function refresh() {
   document.getElementById("grid-slurm").innerHTML =
     NODES.map(h => slurmCard(h, statuses[h])).join("");
   document.getElementById("grid-charts").innerHTML =
-    NODES.map(h => `<div class="col">${nodeCharts(h, statuses[h], histMap[h])}</div>`).join("");
+    NODES.map(h => `<div class="col">${nodeCharts(h, statuses[h], histMap[h], monMap[h])}</div>`).join("");
   lastStatuses = statuses;
 
   const evs = allEvs.slice(0, 12);

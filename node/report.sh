@@ -84,6 +84,25 @@ if [ -n "$FIRST" ] && [ "$FIRST" -lt "$CUTOFF" ]; then
     && mv "history/$HOST.csv.tmp" "history/$HOST.csv"
 fi
 
+# monthly usage aggregate: YYYY-MM,sum(load1),samples,cores — feeds the page's
+# 12-month chart. Samples exist only while the machine is on, so sum/samples is
+# "average load while on" (downtime never drags it down) and samples×5min vs the
+# month's length gives the on-fraction.
+mkdir -p monthly
+MONTH=$(date -u -d "@$NOW" +%Y-%m)
+MF="monthly/$HOST.csv"
+touch "$MF"
+LAST=$(tail -1 "$MF")
+if [ "${LAST%%,*}" = "$MONTH" ]; then
+  head -n -1 "$MF" > "$MF.tmp"
+  echo "$LAST" | awk -F, -v l="$L1" -v k="$NPROC" \
+    '{printf "%s,%.2f,%d,%d\n", $1, $2+l, $3+1, k}' >> "$MF.tmp"
+  mv "$MF.tmp" "$MF"
+else
+  awk -v m="$MONTH" -v l="$L1" -v k="$NPROC" 'BEGIN{printf "%s,%.2f,1,%d\n", m, l, k}' >> "$MF"
+fi
+tail -13 "$MF" > "$MF.tmp" && mv "$MF.tmp" "$MF"   # keep ~a year
+
 MSG="hb $HOST"
 EVENT="${1:-}"
 if [ -n "$EVENT" ]; then
