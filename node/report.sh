@@ -17,13 +17,21 @@ flock -n 9 || exit 0
 # self-heal: a hard crash can leave this clone corrupt (truncated objects, bad
 # HEAD — seen on mini01, 2026-07-24), and every later run then dies here while
 # the page shows "not reporting" forever. If git can't even read the repo,
-# quarantine it and re-clone before carrying on.
+# re-clone next to it and swap ONLY once the new clone is complete. Never move
+# the live clone away first: this script lives inside it, and if the re-clone
+# fails (mini01, 2026-08-27: /home at 100 %) the reporter is simply gone.
 if ! { git status --porcelain >/dev/null 2>&1 && git rev-parse -q --verify HEAD >/dev/null 2>&1; }; then
   URL=$(git config --get remote.origin.url 2>/dev/null) || URL="git@github-ministatus:gianboc/ministatus.git"
   DIR=$PWD
+  NEW="$DIR.new-$(date -u +%Y%m%d-%H%M%S)"
   cd ..
+  if ! git clone -q -b data "$URL" "$NEW"; then
+    rm -rf "$NEW"
+    echo "ministatus: clone unreadable and re-clone failed (disk full? network?) — leaving it in place" >&2
+    exit 1
+  fi
   mv "$DIR" "$DIR.corrupt-$(date -u +%Y%m%d-%H%M%S)"
-  git clone -q -b data "$URL" "$DIR"
+  mv "$NEW" "$DIR"
   cd "$DIR"
   git config user.name "$(hostname -s)-reporter"
   git config user.email "ministatus@localhost"

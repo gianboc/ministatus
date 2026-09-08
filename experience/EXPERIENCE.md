@@ -34,3 +34,16 @@ not derivable from reading the code. See README for what the system *is*.
   discarded, the whole backfill died silently. Per-file `|| true` is required
   when sweeping `/var/log/sysstat/` — precisely because the machines we care
   about are the ones that crash. (observed 2026-07-22)
+
+- **A self-heal that moves its own directory away before the replacement exists
+  is a self-kill.** On 2026-08-27 a node's `/home` reached 100 %; git failed for
+  lack of space, the reporter read that as a corrupt clone, quarantined the
+  directory (script included) and then the re-clone failed for the same reason.
+  Cron kept calling a path that no longer existed, silently, for twelve days —
+  while the quarantined clone was perfectly healthy. Two lessons: a git failure
+  is not proof of corruption (ENOSPC looks identical), and any repair that
+  replaces the thing it runs from must build the replacement first and swap
+  only on success. `report.sh` now re-clones beside the live directory and swaps
+  after the clone completes; a failed re-clone leaves everything in place and
+  exits non-zero. (observed 2026-09-08)
+
