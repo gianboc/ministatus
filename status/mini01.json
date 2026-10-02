@@ -1,19 +1,19 @@
 {
   "host": "mini01",
-  "t": 1790934903,
+  "t": 1790935203,
   "boot": 1790580471,
-  "uptime_s": 354432,
-  "load": [33.39, 31.81, 30.81],
+  "uptime_s": 354732,
+  "load": [25.24, 28.95, 30.02],
   "cores": 48,
-  "mem_used": 124456787968,
+  "mem_used": 98778615808,
   "mem_total": 270140424192,
   "disk_root_pct": 36,
   "disk_home_pct": 84,
-  "disk_home2_pct": 43,
-  "sessions": 3,
+  "disk_home2_pct": 42,
+  "sessions": 4,
   "slurm_running": 4,
   "slurm_pending": 2,
   "slurm_cores": "42/6/0/48",
-  "slurm_jobs": [{"st":"P","c":8,"mem":"16G","el":"0:00","lim":"1-00:00:00"},{"st":"P","c":8,"mem":"16G","el":"0:00","lim":"1-00:00:00"},{"st":"R","c":6,"mem":"50G","el":"2:20:45","lim":"30-00:00:00"},{"st":"R","c":8,"mem":"16G","el":"2:20:51","lim":"1-00:00:00"},{"st":"R","c":20,"mem":"100G","el":"2-23:49:24","lim":"UNLIMITED"},{"st":"R","c":8,"mem":"50G","el":"4-00:27:43","lim":"6-00:00:00"}],
-  "peers": {"mini02": true, "mini03": true}
+  "slurm_jobs": [{"st":"P","c":8,"mem":"16G","el":"0:00","lim":"1-00:00:00"},{"st":"P","c":8,"mem":"16G","el":"0:00","lim":"1-00:00:00"},{"st":"R","c":6,"mem":"50G","el":"2:25:45","lim":"30-00:00:00"},{"st":"R","c":8,"mem":"16G","el":"2:25:51","lim":"1-00:00:00"},{"st":"R","c":20,"mem":"100G","el":"2-23:54:24","lim":"UNLIMITED"},{"st":"R","c":8,"mem":"50G","el":"4-00:32:43","lim":"6-00:00:00"}],
+  "peers": {"mini02": true, "mini03": false}
 }
