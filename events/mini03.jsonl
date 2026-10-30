@@ -11,3 +11,5 @@
 {"host":"mini03","event":"boot","t":1790935814}
 {"host":"mini03","event":"boot","t":1791522559}
 {"host":"mini03","event":"boot","t":1793198288}
+{"host":"mini03","event":"selfheal","t":1793357531}
+{"host":"mini03","event":"boot","t":1793357531}
