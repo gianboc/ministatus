@@ -1,11 +1,11 @@
 {
   "host": "mini03",
-  "t": 1794376503,
-  "boot": 1794207727,
-  "uptime_s": 168776,
-  "load": [20.30, 20.21, 20.04],
+  "t": 1794376802,
+  "boot": 1794207726,
+  "uptime_s": 169076,
+  "load": [20.05, 20.11, 20.04],
   "cores": 48,
-  "mem_used": 36553400320,
+  "mem_used": 36882497536,
   "mem_total": 265577369600,
   "disk_root_pct": 41,
   "disk_home_pct": 78,
@@ -14,6 +14,6 @@
   "slurm_running": 1,
   "slurm_pending": 0,
   "slurm_cores": "20/28/0/48",
-  "slurm_jobs": [{"st":"R","c":20,"mem":"25G","el":"1-20:28:57","lim":"15-00:00:00"}],
+  "slurm_jobs": [{"st":"R","c":20,"mem":"25G","el":"1-20:33:56","lim":"15-00:00:00"}],
   "peers": {"mini01": true, "mini02": true}
 }
