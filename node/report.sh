@@ -59,6 +59,12 @@ DISK_HOME=$(df --output=pcent /home 2>/dev/null | tail -1 | tr -dc 0-9)
 # /home2 exists only on some nodes; leave it null (not 0) where absent so the page skips the meter
 DISK_HOME2=$(df --output=pcent /home2 2>/dev/null | tail -1 | tr -dc 0-9)
 SESSIONS=$(who | wc -l)
+# GPUs: one object per card (util %, memory in MiB); empty list where there is no
+# NVIDIA driver. A field the driver can't report ("[N/A]") becomes null.
+GPUS_JSON=$( (timeout 5 nvidia-smi --query-gpu=utilization.gpu,memory.used,memory.total \
+    --format=csv,noheader,nounits 2>/dev/null || true) | \
+  awk -F', *' 'function n(x){return (x ~ /^[0-9.]+$/) ? x : "null"}
+    NF>=3 {printf "%s{\"util\":%s,\"mem_used\":%s,\"mem_total\":%s}", (c++?",":""), n($1), n($2), n($3)}' )
 # counts only; -1 would mean "no scheduler answer" but wc gives 0 either way — acceptable v0
 SLURM_R=$( (timeout 5 squeue -h -t R 2>/dev/null || true) | wc -l )
 SLURM_PD=$( (timeout 5 squeue -h -t PD 2>/dev/null || true) | wc -l )
@@ -92,6 +98,7 @@ cat > "status/$HOST.json" <<EOF
   "disk_root_pct": ${DISK_ROOT:-0},
   "disk_home_pct": ${DISK_HOME:-0},
   "disk_home2_pct": ${DISK_HOME2:-null},
+  "gpus": [$GPUS_JSON],
   "sessions": $SESSIONS,
   "slurm_running": $SLURM_R,
   "slurm_pending": $SLURM_PD,

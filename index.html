@@ -52,7 +52,7 @@
   .chip { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 650;
           border: 1px solid var(--hairline); border-radius: 999px; padding: 2px 9px; margin-top: 8px; }
   .meters { margin-top: 12px; display: grid; gap: 7px; }
-  .mrow { display: grid; grid-template-columns: 52px 1fr 86px; align-items: center; gap: 9px;
+  .mrow { display: grid; grid-template-columns: 52px 1fr 104px; align-items: center; gap: 9px;
           font-size: 12px; color: var(--muted); }
   .mval { text-align: right; color: var(--ink-2); font-variant-numeric: tabular-nums; }
   .track { height: 8px; border-radius: 4px; background: var(--track); overflow: hidden; }
@@ -206,6 +206,19 @@ function meter(label, val, max, text, hot) {
     <span class="mval">${text}${hot ? " ⚠" : ""}</span></div>`;
 }
 
+// one meter per GPU: bar = utilisation %, text adds memory in use. Nodes still on the
+// old reporter have no "gpus" field → no row; a node with no NVIDIA card reports [].
+function gpuMeters(gpus) {
+  if (!gpus || !gpus.length) return "";
+  return gpus.map((g, i) => {
+    const label = gpus.length > 1 ? "GPU " + i : "GPU";
+    if (g.util == null) return meter(label, 0, 100, "n/a", false);
+    const mem = (g.mem_used != null && g.mem_total)
+      ? ` · ${(g.mem_used / 1024).toFixed(1)}/${(g.mem_total / 1024).toFixed(0)}G` : "";
+    return meter(label, g.util, 100, `${g.util}%${mem}`, false);
+  }).join("");
+}
+
 const fmtWhen = t => new Date(t * 1000).toLocaleString(undefined,
   { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" });
 
@@ -227,7 +240,8 @@ function card(host, s, boots, peerObs) {
     ${st.note ? `<p class="kv">${st.note}</p>` : ""}
     ${recentBoot ? `<span class="chip"><span class="dot" style="background:var(--warn)"></span>⚠ rebooted ${fmtAgo(bootAge)}</span>` : ""}
     <div class="meters">
-      ${meter("load", s.load[0], s.cores, `${s.load[0].toFixed(1)} / ${s.cores}`, loadHot)}
+      ${meter("CPU", s.load[0], s.cores, `${s.load[0].toFixed(1)} / ${s.cores}`, loadHot)}
+      ${gpuMeters(s.gpus)}
       ${meter("RAM", memPct, 100, `${fmtGB(s.mem_used)} / ${fmtGB(s.mem_total)} GB`, memPct > 90)}
       ${meter("disk /", s.disk_root_pct, 100, s.disk_root_pct + "%", s.disk_root_pct > 90)}
       ${meter("/home", s.disk_home_pct, 100, s.disk_home_pct + "%", s.disk_home_pct > 90)}

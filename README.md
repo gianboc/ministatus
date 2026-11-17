@@ -11,7 +11,7 @@ who's alive.
 
 - Every 5 minutes, each enrolled node runs [`node/report.sh`](node/report.sh)
   (plain bash, unprivileged): it writes `status/<host>.json` (uptime, boot time,
-  load, RAM, disk, session count, Slurm job counts) and pushes to the `data`
+  load, RAM, disk, GPU utilisation and memory, session count, Slurm job counts) and pushes to the `data`
   branch with a scoped deploy key.
 - On boot (`@reboot` cron), the same script also appends a line to
   `events/<host>.jsonl` and pushes with a `REBOOT <host> <time>` commit message —
