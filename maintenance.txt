@@ -1,0 +1,5 @@
+# Maintenance log, shown on the status page next to "Recent events".
+# One entry per line:   YYYY-MM-DD | what happened and why
+# Lines starting with # are ignored. Order does not matter: the page sorts newest first.
+
+2026-11-09 | minis were manually booted up after the weekend power outage in TOCEN04

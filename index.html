@@ -80,8 +80,14 @@
          font-variant-numeric: tabular-nums; box-shadow: 0 2px 8px rgba(0,0,0,.12); }
   .ghost { color: var(--muted); }
   .ghost h2 { color: var(--muted); }
-  section.events { margin-top: 28px; }
-  section.events h2 { font-size: 15px; font-weight: 650; margin: 0 0 8px; }
+  .logs { margin-top: 28px; display: grid; grid-template-columns: 1fr 1fr; gap: 28px; align-items: start; }
+  @media (max-width: 720px) { .logs { grid-template-columns: 1fr; } }
+  section.events h2, section.maint h2 { font-size: 15px; font-weight: 650; margin: 0 0 8px; }
+  .ev { flex-wrap: wrap; }
+  .mt { padding: 7px 4px; border-top: 1px solid var(--hairline); font-size: 13.5px;
+        display: grid; grid-template-columns: 92px 1fr; gap: 10px; align-items: baseline; }
+  .mt time { color: var(--muted); font-size: 12.5px; white-space: nowrap; font-variant-numeric: tabular-nums; }
+  .mt span { color: var(--ink-2); }
   .band { margin-top: 14px; }
   section.planner { margin: 24px auto 0; max-width: 640px; background: var(--surface);
                     border: 1px solid var(--hairline); border-radius: 10px; padding: 14px 18px; }
@@ -132,10 +138,17 @@
       real waits are usually shorter, never longer.</p>
   </section>
   <div class="grid band" id="grid-charts"></div>
-  <section class="events">
-    <h2>Recent events</h2>
-    <div id="events"><span class="sub">loading…</span></div>
-  </section>
+  <div class="logs">
+    <section class="events">
+      <h2>Recent events</h2>
+      <div id="events"><span class="sub">loading…</span></div>
+    </section>
+    <section class="maint">
+      <h2>Maintenance log</h2>
+      <p class="sub" style="margin:0 0 8px">Written by hand: why some of the reboots on the left happened.</p>
+      <div id="maint"><span class="sub">loading…</span></div>
+    </section>
+  </div>
   <div id="tip"></div>
   <section class="fine">
     <h2>How fresh is what you see?</h2>
@@ -458,6 +471,19 @@ function eventRow(e) {
   </div>`;
 }
 
+// ---- maintenance log (maintenance.txt on the main branch: "YYYY-MM-DD | text") ----
+const esc = x => x.replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+function maintHtml(txt) {
+  const rows = (txt || "").split("\n").map(l => l.trim())
+    .filter(l => l && !l.startsWith("#"))
+    .map(l => l.match(/^(\d{4}-\d{2}-\d{2})\s*\|\s*(.+)$/)).filter(Boolean)
+    .map(m => ({ d: m[1], text: m[2] }))
+    .sort((a, b) => b.d.localeCompare(a.d));
+  if (!rows.length) return `<span class="sub">nothing recorded yet</span>`;
+  return rows.map(r => `<div class="mt"><time>${
+    new Date(r.d + "T12:00:00").toLocaleDateString()}</time><span>${esc(r.text)}</span></div>`).join("");
+}
+
 async function grab(url) {
   try {
     const r = await fetch(url + "?x=" + Date.now(), { cache: "no-store" });
@@ -511,6 +537,8 @@ async function refresh() {
   const evs = allEvs.slice(0, 12);
   document.getElementById("events").innerHTML =
     evs.length ? evs.map(eventRow).join("") : `<span class="sub">no events recorded yet</span>`;
+
+  document.getElementById("maint").innerHTML = maintHtml(await grab("maintenance.txt"));
 
   document.getElementById("updated").textContent =
     "checked GitHub " + new Date().toLocaleTimeString() +
